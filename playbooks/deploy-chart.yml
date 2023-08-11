@@ -1,0 +1,28 @@
+#!/usr/bin/env ansible-playbook
+#
+# This playbook deploys a local helm chart to the cluster.
+#
+- name: Deploy Chart
+  hosts: controls[0]
+  gather_facts: false
+  become: true
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
+  tasks:
+    - name: Sync chart directory
+      synchronize:
+        src: "{{ chart | realpath }}/"
+        dest: "/tmp/chart-{{ deployment }}"
+        mode: push
+        recursive: true
+        delete: true
+        times: true
+
+    - name: Delete chart
+      shell: 'helm delete -n {{ ns }} {{ deployment }} || true'
+
+    - name: Install chart
+      command: >
+        helm install -g -n {{ ns }}
+        --name-template={{ deployment }} {{ extra }}
+        /tmp/chart-{{ deployment }}

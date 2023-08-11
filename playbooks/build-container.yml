@@ -1,0 +1,39 @@
+#!/usr/bin/env ansible-playbook
+#
+# This playbook builds a container and makes it available to all nodes in
+# the cluster. For this to work, it installs podman and builds a container
+# on each node.
+#
+# Since podman shares its underlying storage with CRI-O, this allows us to
+# make a custom container available to Kubernetes, without having to push it
+# top any registry.
+#
+# Such containers can be used in places where an `image` definition is used,
+# given that the `imagePullPolicy` is set to `IfNotPresent`. Note that this
+# does not work with the `latest` label though, which is always pulled.
+#
+- name: Build Containier
+  hosts: nodes
+  gather_facts: false
+  become: true
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
+  tasks:
+    - name: Ensure podman is installed
+      package:
+        name: podman
+
+    - name: Sync Dockerfile directory
+      synchronize:
+        src: "{{ dockerfile | dirname | realpath }}/"
+        dest: /tmp/build-container
+        mode: push
+        recursive: true
+        delete: true
+        times: true
+
+    - name: Build container
+      command: >
+        podman build . -t '{{ tag }}' {{ extra }}
+      args:
+        chdir: /tmp/build-container
