@@ -255,6 +255,9 @@
         path: /etc/kubernetes/manifests
 
     # Install CRI-O container runtime
+    # https://github.com/cri-o/cri-o#installing-cri-o
+    #
+    # See the downloaded script itself for more information
     # -------------------------------------------------------------------------
     - name: Download CRI-O installer
       get_url:
@@ -303,6 +306,8 @@
         state: started
 
     # Install Kubernetes binaries
+    # https://raw.githubusercontent.com/cri-o/cri-o/main/scripts/get
+    #
     # -------------------------------------------------------------------------
     - name: Create CNI plugins path
       file:
@@ -407,6 +412,8 @@
         enabled: true
         state: started
 
+    # Preparing the required container images
+    # https://kubernetes.io/docs/setup/production-environment/tools/kubeadm/create-cluster-kubeadm/#preparing-the-required-container-images
     - name: Pull base images
       shell: kubeadm config images pull && touch /etc/kubernetes/images-pulled
       args:
@@ -445,6 +452,8 @@
   become: true
   gather_facts: false
   tasks:
+    # Initializing control-plane node
+    # https://kubernetes.io/docs/setup/production-environment/tools/kubeadm/create-cluster-kubeadm/#initializing-your-control-plane-node
     - name: Run kubeadm init
       shell: >
         kubeadm init
@@ -467,6 +476,8 @@
       changed_when: false
       run_once: true
 
+    # Installing a Pod network add-on
+    # https://kubernetes.io/docs/setup/production-environment/tools/kubeadm/create-cluster-kubeadm/#pod-network
     - name: Install Cilium
       shell: >
         KUBECONFIG=/etc/kubernetes/admin.conf
@@ -479,6 +490,8 @@
       shell: KUBECONFIG=/etc/kubernetes/admin.conf cilium status --wait
       changed_when: False
 
+    # Joining nodes
+    # https://kubernetes.io/docs/setup/production-environment/tools/kubeadm/create-cluster-kubeadm/#join-nodes
     - name: Get control join command
       shell: >
         echo $(kubeadm token create --print-join-command)
