@@ -517,10 +517,16 @@
   become: true
   gather_facts: false
   tasks:
-    - name: Export KUBECONFIG by default for root
-      lineinfile:
-        dest: /root/.bashrc
-        line: export KUBECONFIG=/etc/kubernetes/admin.conf
+    - name: Create ~/.kube for root
+      file:
+        path: /root/.kube
+        state: directory
+
+    - name: Link KUBECONFIG for root
+      file:
+        src: /etc/kubernetes/admin.conf
+        path: /root/.kube/config
+        state: hard
 
     # The unarchive module struggles with --strip-components=1
     - name: Install helm
