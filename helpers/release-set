@@ -3,7 +3,7 @@
 
 RATIONALE
 
-When we installing Kubernetes major release, we need to install
+When we're installing Kubernetes major release, we need to install
 associated packages, add a service definitions, install a container runtime,
 and provide CNI network plugin.
 
@@ -12,7 +12,7 @@ script tries to automatically get the most appropriate release for each and
 output the result in an easily consumable JSON.
 
 This has the potential to return a different set of releases each time.
-If reproducability is desired, the output should be stored.\n
+If reproducibility is desired, the output should be stored.\n
 
 EXAMPLES
 

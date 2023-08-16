@@ -9,7 +9,7 @@ Installs a Kubernetes cluster at cloudscale.ch for integration tests.
 
 The Kubernetes cluster is installed using kubeadm as documented on the official homepage: https://kubernetes.io/docs/setup/production-environment/tools/kubeadm/install-kubeadm/
 
-We use the "Wtihout a package manager" approach, to be able to run this on any Linux with a modern-ish kernel and systemd present.
+We use the "Without a package manager" approach, to be able to run this on any Linux with a modern-ish kernel and systemd present.
 
 The Kubernetes cluster that is started has the following properties:
 
@@ -20,7 +20,7 @@ The Kubernetes cluster that is started has the following properties:
 
 ## Requirements
 
-To use k8test, you need a recent Python 3 release, Linux/macOS, and an API token for cloudscale.ch
+To use k8test, you need git, a recent Python 3 release, Linux/macOS, and an API token for cloudscale.ch.
 
 ## Installation
 
