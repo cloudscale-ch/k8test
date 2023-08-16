@@ -185,12 +185,11 @@ def crio(kubernetes: Version) -> Release:
 
     # cri-o uses the same versions as Kubernetes, but they do not have
     # a matching patch release each time.
-    version = match_release(
-        f"{kubernetes.major}.{kubernetes.minor}",
-        repository_versions("https://github.com/cri-o/cri-o")
-    )
+    versions = repository_versions("https://github.com/cri-o/cri-o")
+    version = match_release(f"{kubernetes.major}.{kubernetes.minor}", versions)
 
-    assert version
+    # If they do not, it means that there's no new release yet
+    version = versions[-1]
 
     return Release(
         name="cri-o",
