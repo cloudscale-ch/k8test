@@ -51,6 +51,7 @@ To create a new cluster, run the creation playbook as follows (no need for `ansi
 ```bash
 playbooks/create-cluster.yml \
   -e kubernetes=<kubernetes release to install, defaults to the latest one> \
+  -e cluster_prefix=<string in front of all hostnames, defaults to k8test> \
   -e zone=<rma1|lpg1> \
   -e ssh_key=<path-to-public-ssh-key> \
   -e control_count=<number of controls, defaults to 1> \
@@ -76,7 +77,7 @@ Note that running the `create-cluster.yml` playbook against an existing cluster 
 To delete the created cluster, run the following command:
 
 ```bash
-playbooks/delete-cluster.yml -i cluster/inventory.yml
+playbooks/destroy-cluster.yml -i cluster/inventory.yml
 ```
 
 ### Update Secrets
