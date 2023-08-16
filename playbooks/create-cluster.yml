@@ -37,8 +37,8 @@
         flavor: '{{ flavor | default("flex-8-4") }}'
         volume_size_gb: '{{ volume_size_gb | default(25) }}'
         versions: '{{ release_set.stdout }}'
-        ssh_public: '{{ ssh_key | realpath }}'
-        ssh_private: "{{ ssh_key | realpath | regex_replace('\\.pub$', '') }}"
+        ssh_public: '{{ ssh_key | expanduser | realpath }}'
+        ssh_private: "{{ ssh_key | expanduser | realpath | regex_replace('\\.pub$', '') }}"
 
     - name: Verify API token
       assert:
