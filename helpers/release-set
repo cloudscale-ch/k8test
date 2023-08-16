@@ -136,8 +136,6 @@ def k8s_binary(name: str, kubernetes: Version) -> Release:
 
     """
 
-    version = kubernetes
-
     return Release(
         name=name,
         version=str(kubernetes),
@@ -282,7 +280,6 @@ def k9s(kubernetes: Version) -> Release:
 @cli.command(help=__doc__.strip())
 def main(
     kubernetes: str = Option('', help="Kubernetes release selector."),
-    arch: str = Option('amd64', help="Architecture used."),
 ) -> None:
     kubernetes_release = match_release(
         selector=kubernetes,
