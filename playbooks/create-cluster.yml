@@ -208,14 +208,11 @@
             )
           }}'
 
-    - name: Enable kernel modules
-      modprobe:
-        name: '{{ item }}'
-        persistent: present
-      loop:
-        - overlay
-        - br_netfilter
-
+    # Disable SWAP is not generally supported on Kubernetes (yet):
+    # https://kubernetes.io/docs/setup/production-environment/tools/kubeadm/install-kubeadm/#before-you-begin
+    #
+    # Often, swap is not enabled, but distros like Fedora use zram as a
+    # swap mechanism, and it prevents kubelet from starting.
     - name: Detect zram
       shell: systemctl --type swap | grep -q zram && echo '1' || echo '0'
       register: zram
@@ -228,6 +225,16 @@
         state: stopped
         masked: true
       when: zram.stdout == '1'
+
+    # Enable IPv4 forwarding and letting iptables see bridged traffic:
+    # https://kubernetes.io/docs/setup/production-environment/container-runtimes/#forwarding-ipv4-and-letting-iptables-see-bridged-traffic
+    - name: Enable kernel modules
+      modprobe:
+        name: '{{ item }}'
+        persistent: present
+      loop:
+        - overlay
+        - br_netfilter
 
     - name: Configure sysctl
       sysctl:
