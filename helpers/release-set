@@ -1,0 +1,312 @@
+#!/usr/bin/env python3
+""" Returns a set of associated releases for a Kubernetes release.
+
+RATIONALE
+
+When we're installing Kubernetes major release, we need to install
+associated packages, add a service definitions, install a container runtime,
+and provide CNI network plugin.
+
+All these pieces come with separate releases, which change over time. This
+script tries to automatically get the most appropriate release for each and
+output the result in an easily consumable JSON.
+
+This has the potential to return a different set of releases each time.
+If reproducibility is desired, the output should be stored.\n
+
+EXAMPLES
+
+Shows the release set for the latest Kubernetes release:
+
+    release-set
+
+Shows the release set for the latest Kubernetes 1.27.x patch:
+
+    release-set --kubernetes=1.27
+
+Shows the release set for the given Kubernetes patch release:
+
+    release-set --kubernetes=1.27.1
+
+"""
+from __future__ import annotations
+
+import json
+import subprocess
+import sys
+
+from semver import Version
+from pydantic import BaseModel
+from requests import Session
+from typer import Option
+from typer import Typer
+from typing import Optional
+from typing import List
+from typing import Literal
+
+
+cli = Typer(add_completion=False)
+session = Session()
+
+
+class Release(BaseModel):
+
+    # The name of the software package
+    name: str
+
+    # The version that should be used
+    version: str
+
+
+def repository_versions(url: str, prereleases: bool = False) -> List[Version]:
+    """ Extracts versions from the given repository, sorted from oldest to
+    newest.
+
+    This requires the `git` client to work.
+
+    """
+    process = subprocess.run(
+        ('git', 'ls-remote', '--tags', url),
+        stdout=subprocess.PIPE,
+        check=True
+    )
+
+    releases: List[Version] = []
+
+    for line in process.stdout.decode('utf-8').splitlines():
+        tag = line.split('refs/tags/', 1)[-1].strip('v')
+
+        # Skip peeled references
+        if tag.endswith('{}'):
+            continue
+
+        try:
+            version = Version.parse(tag)
+        except ValueError:
+            continue
+
+        if not prereleases and version.prerelease:
+            continue
+
+        releases.append(version)
+
+    releases.sort()
+
+    return releases
+
+
+def match_release(selector: str, releases: List[Version]) -> Optional[Version]:
+    """ Matches a release from the given selector. """
+
+    if not releases:
+        return None
+
+    if not selector or selector == 'latest':
+        return releases[-1]
+
+    major: int = 1
+    minor: Optional[int] = None
+    patch: Optional[int] = None
+
+    if selector.count('.') == 0:
+        major = int(selector)
+    elif selector.count('.') == 1:
+        major, minor = (int(s) for s in selector.split('.'))
+    elif selector.count('.') == 2:
+        major, minor, patch = (int(s) for s in selector.split('.'))
+    else:
+        return None
+
+    for release in reversed(releases):
+        if major != release.major:
+            continue
+        if minor is not None and minor != release.minor:
+            continue
+        if patch is not None and patch != release.patch:
+            continue
+
+        return release
+
+    return None
+
+
+def k8s_binary(name: str, kubernetes: Version) -> Release:
+    """ Binaries like kubeadm/kubectl/kubelet are part of the Kubernetes
+    release and are versioned accordingly.
+
+    """
+
+    return Release(
+        name=name,
+        version=str(kubernetes),
+    )
+
+
+def cni_plugins(kubernetes: Version) -> Release:
+    """ Get the latest CNI plugins (they seem to be compatible with older
+    releases).
+
+    """
+
+    repo = "https://github.com/containernetworking/plugins"
+    version = repository_versions(repo)[-1]
+
+    return Release(
+        name="cni-plugins",
+        version=str(version),
+    )
+
+
+def cri_tools(kubernetes: Version) -> Release:
+    """ The cri-tools for the given Kubernetes release, which uses the same
+    minor version as Kubernetes (but not the same patch release).
+
+    """
+
+    repo = "https://github.com/kubernetes-sigs/cri-tools"
+    version = match_release(
+        f"{kubernetes.major}.{kubernetes.minor}",
+        repository_versions(repo)
+
+    )
+    assert version
+
+    return Release(
+        name="cri-tools",
+        version=str(version),
+    )
+
+
+def crio(kubernetes: Version) -> Release:
+    """ The cri-o release for the given Kubernetes release, which uses the
+    same minor version as Kubernetes (but not the same patch release).
+
+    """
+
+    # cri-o uses the same versions as Kubernetes, but they do not have
+    # a matching patch release each time.
+    versions = repository_versions("https://github.com/cri-o/cri-o")
+    version = match_release(f"{kubernetes.major}.{kubernetes.minor}", versions)
+
+    # If they do not, it means that there's no new release yet
+    version = versions[-1]
+
+    return Release(
+        name="cri-o",
+        version=str(version),
+    )
+
+
+def cilium(kubernetes: Version) -> Release:
+    """ The latest stable cilium release (there seems to be no way of matching
+    this to a specific Kubernetes release).
+
+    """
+
+    response = session.get(
+        'https://raw.githubusercontent.com/cilium/cilium/main/stable.txt'
+    )
+    response.raise_for_status()
+
+    version = response.text.strip('v \n')
+    return Release(
+        name="cilium",
+        version=version,
+    )
+
+
+def cilium_cli(kubernetes: Version) -> Release:
+    """ The latest stable cilium-cli release. """
+
+    response = session.get(
+        'https://raw.githubusercontent.com/cilium/cilium-cli/main/stable.txt'
+    )
+    response.raise_for_status()
+
+    version = response.text.strip('v \n')
+    return Release(
+        name="cilium-cli",
+        version=version,
+    )
+
+
+def release_infrastructure(kubernetes: Version) -> Release:
+    """ Returns the version that should be used for the release infrastructure
+    repository at github.com/kubernetes/release.
+
+    """
+
+    repo = "https://github.com/kubernetes/release"
+    version = repository_versions(repo)[-1]
+
+    return Release(
+        name="release-infrastructure",
+        version=str(version),
+    )
+
+
+def helm(kubernetes: Version) -> Release:
+    """ Returns the helm version that should be installed. """
+
+    repo = "https://github.com/helm/helm"
+
+    # Limit to 3.x for now, with the assumption that 4.x would break things
+    version = match_release(
+        "3",
+        repository_versions("https://github.com/helm/helm")
+    )
+
+    assert version
+
+    return Release(
+        name="helm",
+        version=str(version),
+    )
+
+
+def k9s(kubernetes: Version) -> Release:
+    """ Returns the k9s version that should be installed. """
+
+    repo = "https://github.com/derailed/k9s"
+    version = repository_versions(repo)[-1]
+
+    return Release(
+        name="k9s",
+        version=str(version),
+    )
+
+
+@cli.command(help=__doc__.strip())
+def main(
+    kubernetes: str = Option('', help="Kubernetes release selector."),
+) -> None:
+    kubernetes_release = match_release(
+        selector=kubernetes,
+        releases=repository_versions(
+            'https://github.com/kubernetes/kubernetes'
+        )
+    )
+
+    if not kubernetes_release:
+        print(f"'{kubernetes}' did not match any Kubernetes release")
+        sys.exit(1)
+
+    release_set = (
+        k8s_binary('kubeadm', kubernetes_release),
+        k8s_binary('kubelet', kubernetes_release),
+        k8s_binary('kubectl', kubernetes_release),
+        cni_plugins(kubernetes_release),
+        cri_tools(kubernetes_release),
+        crio(kubernetes_release),
+        cilium(kubernetes_release),
+        cilium_cli(kubernetes_release),
+        release_infrastructure(kubernetes_release),
+        helm(kubernetes_release),
+        k9s(kubernetes_release),
+    )
+
+    print(json.dumps({r.name: r.model_dump() for r in release_set}, indent=4))
+
+
+if __name__ == '__main__':
+    cli()

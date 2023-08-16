@@ -1,0 +1,25 @@
+#!/usr/bin/env ansible-playbook
+#
+# This playbook deletes a previously created cluster and deletes the files
+# associated with it.
+#
+- name: Delete Cluster
+  hosts: localhost
+  gather_facts: false
+  tasks:
+    - name: Destroy servers
+      cloudscale_ch.cloud.server:
+        name: '{{ item }}'
+        state: absent
+      changed_when: true
+      loop: "{{ groups['nodes'] }}"
+
+    - name: Remove kubeconfig
+      file:
+        dest: '{{ playbook_dir }}/../cluster/admin.conf'
+        state: absent
+
+    - name: Remove inventory
+      file:
+        dest: '{{ playbook_dir }}/../cluster/inventory.yml'
+        state: absent

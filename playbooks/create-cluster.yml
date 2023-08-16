@@ -1,0 +1,618 @@
+#!/usr/bin/env ansible-playbook
+#
+# This playbooks is used to create a new cluster and to create the following
+# files, used by other tools and playbooks:
+#
+# - cluster/admin.conf (kube config)
+# - cluster/inventory.yml (ansible inventory)
+#
+- name: Cloud Setup
+  hosts: localhost
+  gather_facts: false
+  tasks:
+
+    # Load and Verify Config
+    # -------------------------------------------------------------------------
+    - name: Assert required variables
+      assert:
+        that:
+          - '{{ (ssh_key | default("")) != "" }}'
+          - '{{ (zone | default("")) != "" }}'
+        fail_msg: Please provide 'ssh_key' and 'zone'
+
+    - name: Load versions
+      command: '{{ playbook_dir }}/../helpers/release-set --kubernetes={{ kubernetes | default("latest") }}'
+      register: release_set
+      changed_when: false
+      check_mode: false
+
+    - name: Set optional variables
+      set_fact:
+        cluster_prefix: '{{ cluster_prefix | default("k8test") }}'
+        cloudscale_api_token: '{{ lookup("env", "CLOUDSCALE_API_TOKEN") }}'
+        kubernetes: '{{ kubernetes | default("latest") }}'
+        control_count: '{{ control_count | default(1) }}'
+        worker_count: '{{ worker_count | default(2) }}'
+        image: '{{ image | default("ubuntu-22.04") }}'
+        flavor: '{{ flavor | default("flex-8-4") }}'
+        volume_size_gb: '{{ volume_size_gb | default(25) }}'
+        versions: '{{ release_set.stdout }}'
+        ssh_public: '{{ ssh_key | expanduser | realpath }}'
+        ssh_private: "{{ ssh_key | expanduser | realpath | regex_replace('\\.pub$', '') }}"
+
+    - name: Verify API token
+      assert:
+        that:
+          - '{{ cloudscale_api_token|length > 0 }}'
+        fail_msg: Please provide the CLOUDSCALE_API_TOKEN environment variable
+
+    # Launch VMs
+    # -------------------------------------------------------------------------
+    - name: Launch controls
+      cloudscale_ch.cloud.server:
+        name: '{{ cluster_prefix }}-control-{{ index }}'
+        image: '{{ image }}'
+        flavor: '{{ flavor }}'
+        zone: '{{ zone }}'
+        volume_size_gb: '{{ volume_size_gb }}'
+        ssh_keys:
+          - '{{ lookup("file", ssh_public) }}'
+      loop: '{{ range(1, control_count|int + 1) }}'
+      loop_control:
+        loop_var: index
+      async: 60
+      poll: 0
+
+    - name: Launch workers
+      cloudscale_ch.cloud.server:
+        name: '{{ cluster_prefix }}-worker-{{ index }}'
+        image: '{{ image }}'
+        flavor: '{{ flavor }}'
+        zone: '{{ zone }}'
+        volume_size_gb: '{{ volume_size_gb }}'
+        ssh_keys:
+          - '{{ lookup("file", ssh_public) }}'
+      loop: '{{ range(1, worker_count|int + 1) }}'
+      loop_control:
+        loop_var: index
+      async: 60
+      poll: 0
+
+    - name: Wait for controls to launch
+      cloudscale_ch.cloud.server:
+        name: '{{ cluster_prefix }}-control-{{ index }}'
+      register: controls
+      until: 'controls.ssh_host_keys | default(False)'
+      loop: '{{ range(1, control_count|int + 1) }}'
+      loop_control:
+        loop_var: index
+      retries: 45
+      delay: 1
+
+    - name: Wait for workers to launch
+      cloudscale_ch.cloud.server:
+        name: '{{ cluster_prefix }}-worker-{{ index }}'
+      register: workers
+      until: 'workers.ssh_host_keys | default(False)'
+      loop: '{{ range(1, worker_count|int + 1) }}'
+      loop_control:
+        loop_var: index
+      retries: 45
+      delay: 1
+
+    # This is not production-proof, it is good enough for testing only
+    - name: Define the control plane endpoint address as the first control's IP
+      set_fact:
+        control_plane_endpoint_address: '{{ controls.results[0].interfaces[0].addresses[0]["address"] }}'
+
+    - name: Add controls to inventory
+      add_host:
+        name: '{{ cluster_prefix }}-control-{{ control.index }}'
+        ansible_user: '{{ control.image.default_username }}'
+        ansible_host: '{{ control.interfaces[0].addresses[0]["address"] }}'
+        ansible_ssh_private_key_file: '{{ ssh_private }}'
+        server: '{{ control }}'
+        versions: '{{ versions }}'
+        control_plane_endpoint_address: '{{ control_plane_endpoint_address }}'
+        groups:
+          - controls
+          - nodes
+      loop: '{{ controls.results }}'
+      loop_control:
+        loop_var: control
+      changed_when: false
+
+    - name: Add workers to inventory
+      add_host:
+        name: '{{ cluster_prefix }}-worker-{{ worker.index }}'
+        ansible_user: '{{ worker.image.default_username }}'
+        ansible_host: '{{ worker.interfaces[0].addresses[0]["address"] }}'
+        ansible_ssh_private_key_file: '{{ ssh_private }}'
+        server: '{{ worker }}'
+        versions: '{{ versions }}'
+        control_plane_endpoint_address: '{{ control_plane_endpoint_address }}'
+        groups:
+          - workers
+          - nodes
+      loop: '{{ workers.results }}'
+      loop_control:
+        loop_var: worker
+      changed_when: false
+
+# This has to be a separate serial step, as Ansible has a race-condition when
+# known_hosts is run in parallel.
+- name: Clear SSH host keys
+  hosts: nodes
+  gather_facts: false
+  serial: 1
+  tasks:
+    - name: Clear existing SSH host keys
+      known_hosts:
+        name: '{{ ansible_host }}'
+        state: absent
+      loop: '{{ server.ssh_host_keys }}'
+      when: '"ssh-rsa" in item'
+      delegate_to: localhost
+
+    - name: Trust new SSH host keys
+      known_hosts:
+        name: '{{ ansible_host }}'
+        key: '{{ ansible_host }} {{ item }}'
+      loop: '{{ server.ssh_host_keys }}'
+      when: '"ssh-rsa" in item'
+      delegate_to: localhost
+
+- name: VM Setup
+  hosts: nodes
+  become: true
+  gather_facts: false
+  tasks:
+
+    # Install prerequisites
+    # -------------------------------------------------------------------------
+    - name: Connect to node
+      wait_for_connection:
+        timeout: 60
+
+    - name: Check if SELinux is enabled
+      shell: command -v getenforce >/dev/null && getenforce || echo ""
+      register: getenforce
+      changed_when: false
+      check_mode: false
+
+    - name: Update package cache
+      shell: >
+        command -v apt && apt-get update || true
+      changed_when: false
+
+    - name: Define packages
+      set_fact:
+        packages_for_all:
+          - git
+          - cryptsetup
+          - socat
+          - jq
+          - curl
+          - tar
+          - conntrack
+          - iptables
+        packages_for_selinux:
+          - container-selinux
+
+    - name: Install packages
+      package:
+        name: '{{
+            packages_for_all + (
+              (getenforce.stdout == "Enforcing")
+              | ternary(packages_for_selinux, [])
+            )
+          }}'
+
+    # Disable SWAP is not generally supported on Kubernetes (yet):
+    # https://kubernetes.io/docs/setup/production-environment/tools/kubeadm/install-kubeadm/#before-you-begin
+    #
+    # Often, swap is not enabled, but distros like Fedora use zram as a
+    # swap mechanism, and it prevents kubelet from starting.
+    - name: Detect zram
+      shell: systemctl --type swap | grep -q zram && echo '1' || echo '0'
+      register: zram
+      check_mode: false
+      changed_when: false
+
+    - name: Disable zram
+      systemd:
+        name: dev-zram0.swap
+        state: stopped
+        masked: true
+      when: zram.stdout == '1'
+
+    # Enable IPv4 forwarding and letting iptables see bridged traffic:
+    # https://kubernetes.io/docs/setup/production-environment/container-runtimes/#forwarding-ipv4-and-letting-iptables-see-bridged-traffic
+    - name: Enable kernel modules
+      modprobe:
+        name: '{{ item }}'
+        persistent: present
+      loop:
+        - overlay
+        - br_netfilter
+
+    - name: Configure sysctl
+      sysctl:
+        name: '{{ item.name }}'
+        value: '{{ item.value }}'
+        sysctl_file: /etc/sysctl.d/k8s.conf
+      loop:
+        - name: net.bridge.bridge-nf-call-iptables
+          value: 1
+        - name: net.bridge.bridge-nf-call-ip6tables
+          value: 1
+        - name: net.ipv4.ip_forward
+          value: 1
+
+    - name: Ensure /etc/kubernetes/manifests exists (avoids kubelet log spam)
+      file:
+        state: directory
+        path: /etc/kubernetes/manifests
+
+    # Install CRI-O container runtime
+    # https://github.com/cri-o/cri-o#installing-cri-o
+    #
+    # See the downloaded script itself for more information
+    # -------------------------------------------------------------------------
+    - name: Download CRI-O installer
+      get_url:
+        url: 'https://raw.githubusercontent.com/cri-o/cri-o/v{{ versions["cri-o"].version }}/scripts/get'
+        dest: /tmp/install-cri-o
+        mode: '0755'
+      register: download
+      retries: 5
+      delay: 1
+      until: download is succeeded
+
+    - name: Install CRI-O
+      shell: 'PREFIX=/usr /tmp/install-cri-o -t v{{ versions["cri-o"].version }}'
+      args:
+        creates: /usr/bin/crun
+      register: crio
+
+    # crun has given me some weird issues with systemd, so for now we use the
+    # more battle-tested runc runtime
+    - name: Keep using runc
+      file:
+        dest: /etc/crio/crio.conf.d/10-crun.conf
+        state: absent
+
+    # RedHat does not use /usr/local/bin by default, which is why we set
+    # a different PREFIX above. But the crio systemd service uses a hard-coded
+    # path, so we add a link.
+    - name: Link CRI-O to /usr/local/bin/crio
+      file:
+        src: /usr/bin/crio
+        dest: /usr/local/bin/crio
+        state: hard
+
+    # This allows the use of containers on dockerhub that are not fully
+    # qualified, so references like python:latest work.
+    - name: Use docker.io as default search registry
+      copy:
+        content: 'unqualified-search-registries = ["docker.io"]'
+        dest: '/etc/containers/registries.conf'
+
+    - name: Enable crio.service
+      systemd:
+        name: crio
+        daemon_reload: '{{ crio.changed }}'
+        enabled: true
+        state: started
+
+    # Install Kubernetes binaries
+    # https://raw.githubusercontent.com/cri-o/cri-o/main/scripts/get
+    #
+    # -------------------------------------------------------------------------
+    - name: Create CNI plugins path
+      file:
+        path: /opt/cni/bin
+        state: directory
+
+    - name: Download and extract CNI plugins
+      unarchive:
+        src: >
+          https://github.com/containernetworking/plugins/releases/download/v{{
+            versions['cni-plugins'].version
+          }}/cni-plugins-linux-amd64-v{{
+            versions['cni-plugins'].version
+          }}.tgz
+        dest: /opt/cni/bin
+        remote_src: true
+        creates: /opt/cni/bin/dhcp
+      register: result
+      until: not result.failed
+      retries: 5
+      delay: 1
+
+    - name: Download and extract CRI-tools
+      unarchive:
+        src: >
+          https://github.com/kubernetes-sigs/cri-tools/releases/download/v{{
+            versions['cri-tools'].version
+          }}/crictl-v{{
+            versions['cri-tools'].version
+          }}-linux-amd64.tar.gz
+        dest: /usr/bin
+        remote_src: true
+        creates: /usr/bin/crictl
+      register: result
+      until: not result.failed
+      retries: 5
+      delay: 1
+
+    - name: Download and extract Kubernetes binaries
+      get_url:
+        url: 'https://dl.k8s.io/release/v{{ versions[item].version }}/bin/linux/amd64/{{ item }}'
+        dest: '/usr/bin/{{ item }}'
+        mode: '0755'
+      loop:
+        - kubeadm
+        - kubelet
+        - kubectl
+      register: result
+      until: not result.failed
+      retries: 5
+      delay: 1
+
+    - name: Download and extract cilium-cli
+      unarchive:
+        src: >
+          https://github.com/cilium/cilium-cli/releases/download/v{{
+            versions['cilium-cli'].version
+          }}/cilium-linux-amd64.tar.gz
+        dest: /usr/bin
+        remote_src: true
+        creates: /usr/bin/cilium
+      register: result
+      until: not result.failed
+      retries: 5
+      delay: 1
+
+    # Configure and start kubelet service
+    # -------------------------------------------------------------------------
+    - name: Install kubelet service definition
+      get_url:
+        url: >
+          https://raw.githubusercontent.com/kubernetes/release/v{{
+            versions['release-infrastructure'].version
+          }}/cmd/kubepkg/templates/latest/deb/kubelet/lib/systemd/system/kubelet.service
+        dest: /etc/systemd/system/kubelet.service
+      register: kubelet_service
+      until: not kubelet_service.failed
+      retries: 5
+      delay: 1
+
+    - name: Create kubelet.service.d
+      file:
+        state: directory
+        path: /etc/systemd/system/kubelet.service.d
+
+    - name: Install kubeadm service override
+      get_url:
+        url: >
+          https://raw.githubusercontent.com/kubernetes/release/v{{
+            versions['release-infrastructure'].version
+          }}/cmd/kubepkg/templates/latest/deb/kubeadm/10-kubeadm.conf
+        dest: /etc/systemd/system/kubelet.service.d/10-kubeadm.conf
+      register: kubeadm_service
+      until: not kubeadm_service.failed
+      retries: 5
+      delay: 1
+
+    - name: Enable and start kubelet
+      systemd:
+        name: kubelet.service
+        daemon_reload: '{{ kubelet_service.changed or kubeadm_service.changed }}'
+        enabled: true
+        state: started
+
+    # Preparing the required container images
+    # https://kubernetes.io/docs/setup/production-environment/tools/kubeadm/create-cluster-kubeadm/#preparing-the-required-container-images
+    - name: Pull base images
+      shell: kubeadm config images pull && touch /etc/kubernetes/images-pulled
+      args:
+        creates: /etc/kubernetes/images-pulled
+      register: result
+      until: not result.failed
+      retries: 5
+      delay: 1
+
+    # Patch Kubernetes config
+    # -------------------------------------------------------------------------
+    - name: Prepare Kubernetes config overrides
+      file:
+        state: directory
+        path: /etc/kubernetes/kubeadm-patches
+
+    # The default resolv.conf causes issues, as it contains systemd's 127.0.0.53,
+    # which won't work inside a pod, and because it has more than two servers.
+    - name: Get the first two default nameservers
+      shell: grep nameserver /run/systemd/resolve/resolv.conf | head -n 2
+      register: nameservers
+      changed_when: false
+
+    - name: Create a separate resolv.conf for Kubernetes
+      copy:
+        content: '{{ nameservers.stdout }}'
+        dest: /etc/kubernetes/resolv.conf
+
+    - name: Configure separate resolv.conf for Kubernetes
+      copy:
+        content: 'resolvConf: /etc/kubernetes/resolv.conf'
+        dest: /etc/kubernetes/kubeadm-patches/kubeletconfiguration.yaml
+
+- name: Setup Controls
+  hosts: controls[0]
+  become: true
+  gather_facts: false
+  tasks:
+    # Initializing control-plane node
+    # https://kubernetes.io/docs/setup/production-environment/tools/kubeadm/create-cluster-kubeadm/#initializing-your-control-plane-node
+    - name: Run kubeadm init
+      shell: >
+        kubeadm init
+        --control-plane-endpoint {{ control_plane_endpoint_address }}
+        --patches /etc/kubernetes/kubeadm-patches
+        && touch /etc/kubernetes/node-ready
+      args:
+        creates: /etc/kubernetes/node-ready
+      run_once: true
+
+    - name: Wait for all system pods to be ready
+      shell: >
+        KUBECONFIG=/etc/kubernetes/admin.conf kubectl get pods -n kube-system -o json
+        | jq .items[].status.phase -r
+        | grep -vi running || true
+      register: running_system_pods
+      until: running_system_pods.stdout == ''
+      retries: 45
+      delay: 1
+      changed_when: false
+      run_once: true
+
+    # Installing a Pod network add-on
+    # https://kubernetes.io/docs/setup/production-environment/tools/kubeadm/create-cluster-kubeadm/#pod-network
+    - name: Install Cilium
+      shell: >
+        KUBECONFIG=/etc/kubernetes/admin.conf
+        cilium install --version={{ versions['cilium'].version }}
+        && touch /etc/kubernetes/cilium-installed
+      args:
+        creates: /etc/kubernetes/cilium-installed
+
+    - name: Wait for Cilium to be healthy
+      shell: KUBECONFIG=/etc/kubernetes/admin.conf cilium status --wait
+      changed_when: False
+
+    # Joining nodes
+    # https://kubernetes.io/docs/setup/production-environment/tools/kubeadm/create-cluster-kubeadm/#join-nodes
+    - name: Get control join command
+      shell: >
+        echo $(kubeadm token create --print-join-command)
+        --patches /etc/kubernetes/kubeadm-patches
+        --control-plane
+        --certificate-key $(kubeadm init phase upload-certs --upload-certs | grep -vw -e certificate -e Namespace)
+      register: join_control
+      changed_when: false
+
+    - name: Get worker join command
+      shell: >
+        echo $(kubeadm token create --print-join-command)
+        --patches /etc/kubernetes/kubeadm-patches
+      register: join_worker
+      changed_when: false
+
+- name: Join Controls
+  hosts: controls[1:]
+  become: true
+  gather_facts: false
+  tasks:
+    - name: Join additional controls
+      shell: >
+        {{ hostvars[groups['controls'][0]]['join_control'].stdout }}
+        && touch /etc/kubernetes/node-ready
+      args:
+        creates: /etc/kubernetes/node-ready
+
+- name: Join Workers
+  hosts: workers
+  become: true
+  gather_facts: false
+  tasks:
+    - name: Join workers
+      shell: >
+        {{ hostvars[groups['controls'][0]]['join_worker'].stdout }}
+        && touch /etc/kubernetes/node-ready
+      args:
+        creates: /etc/kubernetes/node-ready
+
+- name: Additional Control Setup
+  hosts: controls
+  become: true
+  gather_facts: false
+  tasks:
+    - name: Create ~/.kube for root
+      file:
+        path: /root/.kube
+        state: directory
+
+    - name: Link KUBECONFIG for root
+      file:
+        src: /etc/kubernetes/admin.conf
+        path: /root/.kube/config
+        state: hard
+
+    # The unarchive module struggles with --strip-components=1
+    - name: Install helm
+      shell: >
+        curl -sL https://get.helm.sh/helm-v{{ versions['helm'].version }}-linux-amd64.tar.gz
+        | tar -C /usr/bin -xzv linux-amd64/helm --strip-components 1
+      register: helm
+      until: helm.rc == 0
+      retries: 5
+      delay: 1
+      args:
+        creates: /usr/bin/helm
+
+    - name: Install k9s
+      unarchive:
+        src: >
+          https://github.com/derailed/k9s/releases/download/v{{
+            versions['k9s'].version
+          }}/k9s_Linux_amd64.tar.gz
+        include:
+          - k9s
+        dest: /usr/bin
+        remote_src: true
+        creates: /usr/bin/k9s
+      register: result
+      until: not result.failed
+      retries: 5
+      delay: 1
+
+    - name: Download kubeconfig
+      fetch:
+        src: /etc/kubernetes/admin.conf
+        dest: '{{ playbook_dir }}/../cluster/admin.conf'
+        flat: true
+      run_once: true
+
+- name: Store inventory
+  hosts: localhost
+  gather_facts: false
+  tasks:
+    - name: Store inventory
+      copy:
+        content: |
+          all:
+            hosts:
+          {%  for host in groups['nodes'] %}
+              {{ host }}:
+                ansible_user: {{ hostvars[host]['ansible_user'] }}
+                ansible_host: {{ hostvars[host]['ansible_host'] }}
+                ansible_ssh_private_key_file: {{ hostvars[host]['ansible_ssh_private_key_file'] }}
+          {%  endfor %}
+            children:
+              nodes:
+                hosts:
+          {%    for host in groups['nodes'] %}
+                  {{ host }}:
+          {%    endfor %}
+              controls:
+                hosts:
+          {%    for host in groups['controls'] %}
+                  {{ host }}:
+          {%    endfor %}
+              workers:
+                hosts:
+          {%    for host in groups['workers'] %}
+                  {{ host }}:
+          {%    endfor %}
+
+        dest: '{{ playbook_dir }}/../cluster/inventory.yml'
