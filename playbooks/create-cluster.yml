@@ -589,6 +589,14 @@
         flat: true
       run_once: true
 
+    - name: Set kubeconfig mode (to avoid warnings)
+      file:
+        path: '{{ playbook_dir }}/../cluster/admin.conf'
+        mode: '0600'
+      run_once: true
+      become: false
+      delegate_to: localhost
+
 - name: Store inventory
   hosts: localhost
   gather_facts: false
