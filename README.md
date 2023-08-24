@@ -58,7 +58,8 @@ playbooks/create-cluster.yml \
   -e worker_count=<number of workers, defaults to 2> \
   -e image=<image slug to use, defaults to ubuntu-22.04> \
   -e flavor=<flavor to use, defaults to flex-8-4> \
-  -e volume_size_gb=<root volume size, defaults to 25>
+  -e volume_size_gb=<root volume size, defaults to 25> \
+  -e kubelet_extra_args<passed to kubelet, not defined by default>
 ```
 
 The Kubernetes version installed is the latest one found. You can specify another version, either exactly (e.g. `1.27.1`, or roughly (`1.27`). To see the exact set of versions used, run `helpers/release-set <version>`.

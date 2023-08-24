@@ -32,8 +32,14 @@
         delete: true
         times: true
 
+    - name: Create shared cache
+      file:
+        path: /var/cache/container
+        state: directory
+
     - name: Build container
       command: >
-        podman build . -t '{{ tag }}' {{ extra }}
+        podman build . -v /var/cache/container:/var/cache/container
+        -t '{{ tag }}' {{ extra }}
       args:
         chdir: /tmp/build-container

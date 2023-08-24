@@ -447,6 +447,12 @@
         content: 'resolvConf: /etc/kubernetes/resolv.conf'
         dest: /etc/kubernetes/kubeadm-patches/kubeletconfiguration.yaml
 
+    - name: Store kubelet extra args
+      copy:
+        content: "KUBELET_EXTRA_ARGS={{ kubelet_extra_args }}\n"
+        dest: /etc/default/kubelet
+      when: kubelet_extra_args is defined
+
 - name: Setup Controls
   hosts: controls[0]
   become: true
@@ -582,6 +588,14 @@
         dest: '{{ playbook_dir }}/../cluster/admin.conf'
         flat: true
       run_once: true
+
+    - name: Set kubeconfig mode (to avoid warnings)
+      file:
+        path: '{{ playbook_dir }}/../cluster/admin.conf'
+        mode: '0600'
+      run_once: true
+      become: false
+      delegate_to: localhost
 
 - name: Store inventory
   hosts: localhost
