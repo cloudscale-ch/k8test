@@ -57,6 +57,8 @@
         volume_size_gb: '{{ volume_size_gb }}'
         ssh_keys:
           - '{{ lookup("file", ssh_public) }}'
+        tags:
+          source: k8test
       loop: '{{ range(1, control_count|int + 1) }}'
       loop_control:
         loop_var: index
@@ -72,6 +74,8 @@
         volume_size_gb: '{{ volume_size_gb }}'
         ssh_keys:
           - '{{ lookup("file", ssh_public) }}'
+        tags:
+          source: k8test
       loop: '{{ range(1, worker_count|int + 1) }}'
       loop_control:
         loop_var: index
