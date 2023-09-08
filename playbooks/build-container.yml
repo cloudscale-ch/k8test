@@ -31,6 +31,11 @@
         recursive: true
         delete: true
         times: true
+        rsync_opts:
+          - "--exclude=.git"
+          - "--exclude=.github"
+          - "--exclude=k8test"
+          - "--exclude=venv"
 
     - name: Create shared cache
       file:
