@@ -12,7 +12,7 @@
 # given that the `imagePullPolicy` is set to `IfNotPresent`. Note that this
 # does not work with the `latest` label though, which is always pulled.
 #
-- name: Build Containier
+- name: Build Container
   hosts: nodes
   gather_facts: false
   become: true
