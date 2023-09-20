@@ -176,7 +176,11 @@
     # -------------------------------------------------------------------------
     - name: Connect to node
       wait_for_connection:
-        timeout: 60
+        timeout: 16
+      register: connection
+      retries: 4
+      delay: 4
+      until: connection is not failed
 
     - name: Check if SELinux is enabled
       shell: command -v getenforce >/dev/null && getenforce || echo ""
