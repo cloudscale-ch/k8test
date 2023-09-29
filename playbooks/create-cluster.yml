@@ -46,6 +46,52 @@
           - '{{ cloudscale_api_token|length > 0 }}'
         fail_msg: Please provide the CLOUDSCALE_API_TOKEN environment variable
 
+    # Setup Infra
+    # -------------------------------------------------------------------------
+    - name: Create private network
+      cloudscale_ch.cloud.network:
+        name: '{{ cluster_prefix }}-private-network'
+        auto_create_ipv4_subnet: False
+        zone: '{{ zone }}'
+      register: private_network
+
+    - name: Create subnet
+      cloudscale_ch.cloud.subnet:
+        cidr: 10.100.10.0/24
+        network:
+          uuid: '{{ private_network.uuid}}'
+      register: subnet
+
+    - name: Create load balancer
+      cloudscale_ch.cloud.load_balancer:
+        name: '{{ cluster_prefix }}-kube-api'
+        flavor: lb-standard
+        zone: '{{ zone }}'
+        vip_addresses:
+          - subnet: '{{ subnet.uuid }}'
+            address: 10.100.10.11
+      register: load_balancer
+
+    - name: Create load balancer pool
+      cloudscale_ch.cloud.load_balancer_pool:
+        name: '{{ cluster_prefix }}-kube-api-pool'
+        load_balancer: '{{ load_balancer.uuid }}'
+        algorithm: round_robin
+        protocol: tcp
+      register: load_balancer_pool
+
+    - name: Create load balancer listener
+      cloudscale_ch.cloud.load_balancer_listener:
+        name: '{{ cluster_prefix }}-kube-api-listener'
+        pool: '{{ load_balancer_pool.uuid }}'
+        protocol: tcp
+        protocol_port: 6443
+
+    - name: Create load balancer health monitor
+      cloudscale_ch.cloud.load_balancer_health_monitor:
+        pool: '{{ load_balancer_pool.uuid }}'
+        type: 'tcp'
+
     # Launch VMs
     # -------------------------------------------------------------------------
     - name: Launch controls
@@ -55,6 +101,10 @@
         flavor: '{{ flavor }}'
         zone: '{{ zone }}'
         volume_size_gb: '{{ volume_size_gb }}'
+        interfaces:
+          - network: public
+          - addresses:
+              - subnet: '{{ subnet.uuid }}'
         ssh_keys:
           - '{{ lookup("file", ssh_public) }}'
         tags:
@@ -72,6 +122,10 @@
         flavor: '{{ flavor }}'
         zone: '{{ zone }}'
         volume_size_gb: '{{ volume_size_gb }}'
+        interfaces:
+          - network: public
+          - addresses:
+              - subnet: '{{ subnet.uuid }}'
         ssh_keys:
           - '{{ lookup("file", ssh_public) }}'
         tags:
@@ -93,6 +147,18 @@
       retries: 45
       delay: 1
 
+    - name: Create load balancer pool members for controls
+      cloudscale_ch.cloud.load_balancer_pool_member:
+        name: '{{ cluster_prefix }}-kube-api-pool-member{{ control.index }}'
+        load_balancer_pool: '{{ load_balancer_pool.uuid }}'
+        enabled: true
+        protocol_port: 6443
+        subnet: '{{ subnet.uuid }}'
+        address: '{{ control.interfaces[1].addresses[0]["address"] }}'
+      loop: '{{ controls.results }}'
+      loop_control:
+        loop_var: control
+
     - name: Wait for workers to launch
       cloudscale_ch.cloud.server:
         name: '{{ cluster_prefix }}-worker-{{ index }}'
@@ -104,10 +170,9 @@
       retries: 45
       delay: 1
 
-    # This is not production-proof, it is good enough for testing only
     - name: Define the control plane endpoint address as the first control's IP
       set_fact:
-        control_plane_endpoint_address: '{{ controls.results[0].interfaces[0].addresses[0]["address"] }}'
+        control_plane_endpoint_address: '{{ load_balancer.vip_addresses[0]["address"] }}'
 
     - name: Add controls to inventory
       add_host:
@@ -601,6 +666,16 @@
       file:
         path: '{{ playbook_dir }}/../cluster/admin.conf'
         mode: '0600'
+      run_once: true
+      become: false
+      delegate_to: localhost
+
+    # Just use the first control for external admin access
+    - name: Replace string in file using sed
+      ansible.builtin.replace:
+        path: '{{ playbook_dir }}/../cluster/admin.conf'
+        regexp: '{{ control_plane_endpoint_address }}'
+        replace: '{{ hostvars[groups["controls"][0]]["ansible_host"] }}'
       run_once: true
       become: false
       delegate_to: localhost
