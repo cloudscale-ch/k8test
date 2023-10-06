@@ -46,6 +46,23 @@
           - '{{ cloudscale_api_token|length > 0 }}'
         fail_msg: Please provide the CLOUDSCALE_API_TOKEN environment variable
 
+    # Setup infrastructure
+    # -------------------------------------------------------------------------
+    - name: Create private network
+      cloudscale_ch.cloud.network:
+        name: '{{ cluster_prefix }}-private-network-{{ zone }}'
+        auto_create_ipv4_subnet: False
+        zone: '{{ zone }}'
+      register: private_network
+
+    - name: Create subnet in private network
+      cloudscale_ch.cloud.subnet:
+        cidr: 10.100.10.0/24
+        dns_servers: []
+        network:
+          uuid: '{{ private_network.uuid }}'
+      register: subnet
+
     # Launch VMs
     # -------------------------------------------------------------------------
     - name: Launch controls
@@ -57,6 +74,10 @@
         volume_size_gb: '{{ volume_size_gb }}'
         ssh_keys:
           - '{{ lookup("file", ssh_public) }}'
+        interfaces:
+          - network: public
+          - addresses:
+              - subnet: '{{ subnet.uuid }}'
         tags:
           source: k8test
       loop: '{{ range(1, control_count|int + 1) }}'
@@ -74,6 +95,10 @@
         volume_size_gb: '{{ volume_size_gb }}'
         ssh_keys:
           - '{{ lookup("file", ssh_public) }}'
+        interfaces:
+          - network: public
+          - addresses:
+              - subnet: '{{ subnet.uuid }}'
         tags:
           source: k8test
       loop: '{{ range(1, worker_count|int + 1) }}'
