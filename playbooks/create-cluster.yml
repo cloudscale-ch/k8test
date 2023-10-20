@@ -26,11 +26,18 @@
       changed_when: false
       check_mode: false
 
+    - name: Show versions
+      debug:
+        msg: |
+          {% for name, release in (release_set.stdout | from_json).items() %}
+          {{ name }}={{ release["version"] }}
+          {% endfor %}
+      changed_when: true
+
     - name: Set optional variables
       set_fact:
         cluster_prefix: '{{ cluster_prefix | default("k8test") }}'
         cloudscale_api_token: '{{ lookup("env", "CLOUDSCALE_API_TOKEN") }}'
-        kubernetes: '{{ kubernetes | default("latest") }}'
         control_count: '{{ control_count | default(1) }}'
         worker_count: '{{ worker_count | default(2) }}'
         image: '{{ image | default("ubuntu-22.04") }}'
@@ -448,7 +455,9 @@
     # Preparing the required container images
     # https://kubernetes.io/docs/setup/production-environment/tools/kubeadm/create-cluster-kubeadm/#preparing-the-required-container-images
     - name: Pull base images
-      shell: kubeadm config images pull && touch /etc/kubernetes/images-pulled
+      shell: >
+        kubeadm config images pull --kubernetes-version=v{{ versions["kubernetes"]["version"] }}
+        && touch /etc/kubernetes/images-pulled
       args:
         creates: /etc/kubernetes/images-pulled
       register: result
@@ -496,6 +505,7 @@
     - name: Run kubeadm init
       shell: >
         kubeadm init
+        --kubernetes-version=v{{ versions["kubernetes"]["version"] }}
         --control-plane-endpoint {{ control_plane_endpoint_address }}
         --patches /etc/kubernetes/kubeadm-patches
         && touch /etc/kubernetes/node-ready

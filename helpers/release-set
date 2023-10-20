@@ -292,6 +292,7 @@ def main(
         sys.exit(1)
 
     release_set = (
+        Release(name='kubernetes', version=str(kubernetes_release)),
         k8s_binary('kubeadm', kubernetes_release),
         k8s_binary('kubelet', kubernetes_release),
         k8s_binary('kubectl', kubernetes_release),
