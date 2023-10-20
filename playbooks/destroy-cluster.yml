@@ -7,12 +7,21 @@
   hosts: localhost
   gather_facts: false
   tasks:
+    - name: Set optional variables
+      set_fact:
+        cluster_prefix: '{{ cluster_prefix | default("k8test") }}'
+
     - name: Destroy servers
       cloudscale_ch.cloud.server:
         name: '{{ item }}'
         state: absent
       changed_when: true
       loop: "{{ groups['nodes'] }}"
+
+    - name: Destroy private network
+      cloudscale_ch.cloud.network:
+        name: '{{ cluster_prefix }}-private-network'
+        state: absent
 
     - name: Remove kubeconfig
       file:
