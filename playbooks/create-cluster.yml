@@ -416,39 +416,59 @@
 
     # Configure and start kubelet service
     # -------------------------------------------------------------------------
+
+    # The service definition and the drop-in below are copied from
+    # https://github.com/kubernetes/release
     - name: Install kubelet service definition
-      get_url:
-        url: >
-          https://raw.githubusercontent.com/kubernetes/release/v{{
-            versions['release-infrastructure'].version
-          }}/cmd/kubepkg/templates/latest/deb/kubelet/lib/systemd/system/kubelet.service
+      copy:
+        content: |
+          [Unit]
+          Description=kubelet: The Kubernetes Node Agent ({{ versions['kubernetes']["version"] }})
+          Documentation=https://kubernetes.io/docs/
+          Wants=network-online.target
+          After=network-online.target
+
+          [Service]
+          ExecStart=/usr/bin/kubelet
+          Restart=always
+          StartLimitInterval=0
+          RestartSec=10
+
+          [Install]
+          WantedBy=multi-user.target
         dest: /etc/systemd/system/kubelet.service
       register: kubelet_service
-      until: not kubelet_service.failed
-      retries: 5
-      delay: 1
 
     - name: Create kubelet.service.d
       file:
         state: directory
         path: /etc/systemd/system/kubelet.service.d
 
-    - name: Install kubeadm service override
-      get_url:
-        url: >
-          https://raw.githubusercontent.com/kubernetes/release/v{{
-            versions['release-infrastructure'].version
-          }}/cmd/kubepkg/templates/latest/deb/kubeadm/10-kubeadm.conf
+    - name: Install kubeadm drop-in
+      copy:
+        content: |
+          [Service]
+          Environment="KUBELET_KUBECONFIG_ARGS=--bootstrap-kubeconfig=/etc/kubernetes/bootstrap-kubelet.conf --kubeconfig=/etc/kubernetes/kubelet.conf"
+          Environment="KUBELET_CONFIG_ARGS=--config=/var/lib/kubelet/config.yaml"
+
+          # This is a file that "kubeadm init" and "kubeadm join" generates at
+          # runtime, populating the KUBELET_KUBEADM_ARGS variable dynamically
+          EnvironmentFile=-/var/lib/kubelet/kubeadm-flags.env
+
+          # This is a file that the user can use for overrides of the kubelet
+          # args as a last resort. Preferably, the user should use
+          # the .NodeRegistration.KubeletExtraArgs object in the configuration
+          # files instead. KUBELET_EXTRA_ARGS should be sourced from this file.
+          EnvironmentFile=-/etc/default/kubelet
+          ExecStart=
+          ExecStart=/usr/bin/kubelet $KUBELET_KUBECONFIG_ARGS $KUBELET_CONFIG_ARGS $KUBELET_KUBEADM_ARGS $KUBELET_EXTRA_ARGS
         dest: /etc/systemd/system/kubelet.service.d/10-kubeadm.conf
-      register: kubeadm_service
-      until: not kubeadm_service.failed
-      retries: 5
-      delay: 1
+      register: kubeadm_drop_in
 
     - name: Enable and start kubelet
       systemd:
         name: kubelet.service
-        daemon_reload: '{{ kubelet_service.changed or kubeadm_service.changed }}'
+        daemon_reload: '{{ kubelet_service.changed or kubeadm_drop_in.changed }}'
         enabled: true
         state: started
 
