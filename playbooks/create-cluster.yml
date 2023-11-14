@@ -301,7 +301,7 @@
     # -------------------------------------------------------------------------
     - name: Download CRI-O installer
       get_url:
-        url: 'https://raw.githubusercontent.com/cri-o/cri-o/v{{ versions["cri-o"].version }}/scripts/get'
+        url: 'https://raw.githubusercontent.com/cri-o/packaging/main/get'
         dest: /tmp/install-cri-o
         mode: '0755'
       register: download
