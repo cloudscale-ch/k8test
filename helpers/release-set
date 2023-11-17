@@ -48,6 +48,16 @@ cli = Typer(add_completion=False)
 session = Session()
 
 
+# Exclude certain releases that are known to give trouble, and maps them
+# to the closest release that fixes it.
+RELEASE_MAP = {
+    'cilium': {
+        # The cilium pods crash-loop in 1.14.4
+        '1.14.4': '1.14.3',
+    }
+}
+
+
 class Release(BaseModel):
 
     # The name of the software package
@@ -210,7 +220,7 @@ def cilium(kubernetes: Version) -> Release:
     version = response.text.strip('v \n')
     return Release(
         name="cilium",
-        version=version,
+        version='1.14.3',
     )
 
 
@@ -285,6 +295,15 @@ def main(
         helm(kubernetes_release),
         k9s(kubernetes_release),
     )
+
+    for release in release_set:
+        if release.name not in RELEASE_MAP:
+            continue
+
+        if release.version not in RELEASE_MAP[release.name]:
+            continue
+
+        release.version = RELEASE_MAP[release.name][release.version]
 
     print(json.dumps({r.name: r.model_dump() for r in release_set}, indent=4))
 
