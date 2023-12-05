@@ -563,10 +563,12 @@
         creates: /etc/kubernetes/node-ready
       run_once: true
 
+    # CoreDNS is not scheduled until the nodes are untainted, at least on
+    # older Kubernetes releases (before 1.27).
     - name: Wait for all system pods to be ready
       shell: >
         KUBECONFIG=/etc/kubernetes/admin.conf kubectl get pods -n kube-system -o json
-        | jq .items[].status.phase -r
+        | jq .items[].status.phase -r -l k8s-app!=kube-dns
         | grep -vi running || true
       register: running_system_pods
       until: running_system_pods.stdout == ''
