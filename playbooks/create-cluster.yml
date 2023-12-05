@@ -175,6 +175,36 @@
         loop_var: worker
       changed_when: false
 
+    - name: Store inventory
+      copy:
+        content: |
+          all:
+            hosts:
+          {%  for host in groups['nodes'] %}
+              {{ host }}:
+                ansible_user: {{ hostvars[host]['ansible_user'] }}
+                ansible_host: {{ hostvars[host]['ansible_host'] }}
+                ansible_ssh_private_key_file: {{ hostvars[host]['ansible_ssh_private_key_file'] }}
+          {%  endfor %}
+            children:
+              nodes:
+                hosts:
+          {%    for host in groups['nodes'] %}
+                  {{ host }}:
+          {%    endfor %}
+              controls:
+                hosts:
+          {%    for host in groups['controls'] %}
+                  {{ host }}:
+          {%    endfor %}
+              workers:
+                hosts:
+          {%    for host in groups['workers'] %}
+                  {{ host }}:
+          {%    endfor %}
+
+        dest: '{{ playbook_dir }}/../cluster/inventory.yml'
+
 # This has to be a separate serial step, as Ansible has a race-condition when
 # known_hosts is run in parallel.
 - name: Clear SSH host keys
@@ -659,37 +689,3 @@
       run_once: true
       become: false
       delegate_to: localhost
-
-- name: Store inventory
-  hosts: localhost
-  gather_facts: false
-  tasks:
-    - name: Store inventory
-      copy:
-        content: |
-          all:
-            hosts:
-          {%  for host in groups['nodes'] %}
-              {{ host }}:
-                ansible_user: {{ hostvars[host]['ansible_user'] }}
-                ansible_host: {{ hostvars[host]['ansible_host'] }}
-                ansible_ssh_private_key_file: {{ hostvars[host]['ansible_ssh_private_key_file'] }}
-          {%  endfor %}
-            children:
-              nodes:
-                hosts:
-          {%    for host in groups['nodes'] %}
-                  {{ host }}:
-          {%    endfor %}
-              controls:
-                hosts:
-          {%    for host in groups['controls'] %}
-                  {{ host }}:
-          {%    endfor %}
-              workers:
-                hosts:
-          {%    for host in groups['workers'] %}
-                  {{ host }}:
-          {%    endfor %}
-
-        dest: '{{ playbook_dir }}/../cluster/inventory.yml'
