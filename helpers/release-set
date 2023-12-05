@@ -20,6 +20,15 @@ Shows the release set for the latest Kubernetes release:
 
     release-set
 
+Kubernetes releases can be referenced by index as well, with 0 refering to the
+latest minor release, -1 to the previous, and so on.
+
+For example, if 1.28.4 is the latest:
+
+    release-set --kubernetes=0   # 1.28.4
+    release-set --kubernetes=-1  # 1.27.8
+    release-set --kubernetes=-2  # 1.26.11
+
 Shows the release set for the latest Kubernetes 1.27.x patch:
 
     release-set --kubernetes=1.27
@@ -110,8 +119,13 @@ def match_release(selector: str, releases: List[Version]) -> Optional[Version]:
     if not releases:
         return None
 
-    if not selector or selector == 'latest':
+    if not selector or selector in ('latest', '0'):
         return releases[-1]
+
+    if selector.startswith('-'):
+        latest = releases[-1]
+        minor = latest.minor - abs(int(selector))
+        selector = f"{latest.major}.{minor}"
 
     major: int = 1
     minor: Optional[int] = None
