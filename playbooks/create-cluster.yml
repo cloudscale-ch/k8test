@@ -46,6 +46,7 @@
         versions: '{{ release_set.stdout }}'
         ssh_public: '{{ ssh_key | expanduser | realpath }}'
         ssh_private: "{{ ssh_key | expanduser | realpath | regex_replace('\\.pub$', '') }}"
+        subnet: "10.100.10.0/24"
 
     - name: Verify API token
       assert:
@@ -64,7 +65,7 @@
 
     - name: Create subnet in private network
       cloudscale_ch.cloud.subnet:
-        cidr: 10.100.10.0/24
+        cidr: '{{ subnet }}'
         dns_servers: []
         network:
           uuid: '{{ private_network.uuid }}'
