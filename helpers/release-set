@@ -122,14 +122,14 @@ def match_release(selector: str, releases: List[Version]) -> Optional[Version]:
     if not selector or selector in ('latest', '0'):
         return releases[-1]
 
+    major: int = 1
+    minor: Optional[int] = None
+    patch: Optional[int] = None
+
     if selector.startswith('-'):
         latest = releases[-1]
         minor = latest.minor - abs(int(selector))
         selector = f"{latest.major}.{minor}"
-
-    major: int = 1
-    minor: Optional[int] = None
-    patch: Optional[int] = None
 
     if selector.count('.') == 0:
         major = int(selector)
@@ -212,7 +212,8 @@ def crio(kubernetes: Version) -> Release:
     version = match_release(f"{kubernetes.major}.{kubernetes.minor}", versions)
 
     # If they do not, it means that there's no new release yet
-    version = versions[-1]
+    if version is None:
+        version = versions[-1]
 
     return Release(
         name="cri-o",
@@ -231,10 +232,9 @@ def cilium(kubernetes: Version) -> Release:
     )
     response.raise_for_status()
 
-    version = response.text.strip('v \n')
     return Release(
         name="cilium",
-        version='1.14.3',
+        version=response.text.strip('v \n'),
     )
 
 
