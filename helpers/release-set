@@ -205,20 +205,19 @@ def cri_o(kubernetes: Version) -> Release:
     """ The cri-o release for the given Kubernetes release, which uses the
     same minor version as Kubernetes (but not the same patch release).
 
+    That being said, installing an older CRI-O version is often tricky as
+    their install script is not versioned and tends to fail with older
+    versions.
+
+    Therefore we always use the latest release.
+
     """
 
-    # cri-o uses the same versions as Kubernetes, but they do not have
-    # a matching patch release each time.
     versions = repository_versions("https://github.com/cri-o/cri-o")
-    version = match_release(f"{kubernetes.major}.{kubernetes.minor}", versions)
-
-    # If they do not, it means that there's no new release yet
-    if version is None:
-        version = versions[-1]
 
     return Release(
         name="cri-o",
-        version=str(version),
+        version=str(versions[-1]),
     )
 
 
