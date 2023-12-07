@@ -69,7 +69,7 @@
         dns_servers: []
         network:
           uuid: '{{ private_network.uuid }}'
-      register: subnet
+      register: private_subnet
 
     # Launch VMs
     # -------------------------------------------------------------------------
@@ -85,7 +85,7 @@
         interfaces:
           - network: public
           - addresses:
-              - subnet: '{{ subnet.uuid }}'
+              - subnet: '{{ private_subnet.uuid }}'
         tags:
           source: k8test
       loop: '{{ range(1, control_count|int + 1) }}'
@@ -106,7 +106,7 @@
         interfaces:
           - network: public
           - addresses:
-              - subnet: '{{ subnet.uuid }}'
+              - subnet: '{{ private_subnet.uuid }}'
         tags:
           source: k8test
       loop: '{{ range(1, worker_count|int + 1) }}'
