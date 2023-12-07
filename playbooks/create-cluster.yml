@@ -88,6 +88,7 @@
               - subnet: '{{ private_subnet.uuid }}'
         tags:
           source: k8test
+          cluster_prefix: '{{ cluster_prefix }}'
       loop: '{{ range(1, control_count|int + 1) }}'
       loop_control:
         loop_var: index
@@ -109,6 +110,7 @@
               - subnet: '{{ private_subnet.uuid }}'
         tags:
           source: k8test
+          cluster_prefix: '{{ cluster_prefix }}'
       loop: '{{ range(1, worker_count|int + 1) }}'
       loop_control:
         loop_var: index
