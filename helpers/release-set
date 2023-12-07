@@ -333,7 +333,7 @@ def main(
 
     releases = tuple(release_set())
 
-    for release in release_set():
+    for release in releases:
         if release.name not in RELEASE_MAP:
             continue
 
