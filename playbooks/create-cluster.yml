@@ -364,7 +364,7 @@
         dest: /usr/local/bin/crio
         state: hard
 
-    # This allows the use of containers on dockerhub that are not fully
+    # This allows the use of images on dockerhub that are not fully
     # qualified, so references like python:latest work.
     - name: Use docker.io as default search registry
       copy:

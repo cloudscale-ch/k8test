@@ -1,0 +1,50 @@
+#!/usr/bin/env ansible-playbook
+#
+# This playbook builds an image and makes it available to all nodes in
+# the cluster. For this to work, it installs podman and builds an image
+# on each node.
+#
+# Since podman shares its underlying storage with CRI-O, this allows us to
+# make a custom image available to Kubernetes, without having to push it
+# to any registry.
+#
+# Such images can be used in places where an `image` definition is used,
+# given that the `imagePullPolicy` is set to `IfNotPresent`. Note that this
+# does not work with the `latest` label though, which is always pulled.
+#
+- name: Build Image
+  hosts: nodes
+  gather_facts: false
+  become: true
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
+  tasks:
+    - name: Ensure podman is installed
+      package:
+        name: podman
+
+    - name: Sync Dockerfile directory
+      synchronize:
+        src: "{{ dockerfile | dirname | realpath }}/"
+        dest: /tmp/build-image
+        mode: push
+        recursive: true
+        delete: true
+        times: true
+        rsync_opts:
+          - "--exclude=.git"
+          - "--exclude=.github"
+          - "--exclude=k8test"
+          - "--exclude=venv"
+
+    - name: Create shared cache
+      file:
+        path: /var/cache/image
+        state: directory
+
+    - name: Build image
+      command: >
+        podman build . -v /var/cache/image:/var/cache/image
+        -t '{{ tag }}' {{ extra }}
+      args:
+        chdir: /tmp/build-image

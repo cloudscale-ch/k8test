@@ -112,7 +112,7 @@ playbooks/deploy-chart.yml \
   -e extra='"--set controller.image.tag=foo --set controller.image.tag=foo"'
 ```
 
-### Build a Container
+### Build a Container Image
 
 This playbook allows building a Dockerfile on the nodes in a way that makes the resulting image available on the cluster, without the need for an external registry.
 
@@ -121,7 +121,7 @@ This is done by installing Podman, which uses the same underlying storage as CRI
 The resulting image can be used with `imagePullPolicy: IfNotPresent`, provided that the image tag is not `latest` (which always causes a pull).
 
 ```bash
-playbooks/build-container.yml -i cluster/inventory.yml \
+playbooks/build-image.yml -i cluster/inventory.yml \
   -e dockerfile=<path to local Dockerfile> \
   -e tag=<tag to apply> \
   -e extra=<extra args for podman>
@@ -130,7 +130,7 @@ playbooks/build-container.yml -i cluster/inventory.yml \
 Just like with the `extra` in `playbooks/deploy-chart.yml`, quotes are necessary if there are spaces:
 
 ```bash
-/playbooks/build-container.yml -i cluster/inventory.yml \
+/playbooks/build-image.yml -i cluster/inventory.yml \
   -e dockerfile=./Dockerfile \
   -e tag=quay.io/cloudscalech/cloudscale-cloud-controller-manager:test \
   -e extra='"--build-arg=BAR=foo --build-arg=FOO=bar"'
