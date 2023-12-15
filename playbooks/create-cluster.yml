@@ -6,9 +6,11 @@
 # - cluster/admin.conf (kube config)
 # - cluster/inventory.yml (ansible inventory)
 #
-- name: Cloud Setup
+- name: Host Setup
   hosts: localhost
   gather_facts: false
+  tags:
+    - always
   tasks:
 
     # Load and Verify Config
@@ -214,6 +216,8 @@
   hosts: nodes
   gather_facts: false
   serial: 1
+  tags:
+    - always
   tasks:
     - name: Clear existing SSH host keys
       known_hosts:
@@ -235,6 +239,8 @@
   hosts: nodes
   become: true
   gather_facts: false
+  tags:
+    - setup-vms
   tasks:
 
     # Install prerequisites
@@ -552,6 +558,8 @@
   hosts: controls[0]
   become: true
   gather_facts: false
+  tags:
+    - setup-controls
   tasks:
     # Initializing control-plane node
     # https://kubernetes.io/docs/setup/production-environment/tools/kubeadm/create-cluster-kubeadm/#initializing-your-control-plane-node
@@ -580,6 +588,27 @@
       changed_when: false
       run_once: true
 
+    - name: Download kubeconfig
+      fetch:
+        src: /etc/kubernetes/admin.conf
+        dest: '{{ playbook_dir }}/../cluster/admin.conf'
+        flat: true
+
+    - name: Set kubeconfig mode (to avoid warnings)
+      file:
+        path: '{{ playbook_dir }}/../cluster/admin.conf'
+        mode: '0600'
+      run_once: true
+      become: false
+      delegate_to: localhost
+
+- name: Setup Network
+  hosts: controls[0]
+  become: true
+  gather_facts: false
+  tags:
+    - setup-network
+  tasks:
     # Installing a Pod network add-on
     # https://kubernetes.io/docs/setup/production-environment/tools/kubeadm/create-cluster-kubeadm/#pod-network
     - name: Install Cilium
@@ -616,6 +645,8 @@
   hosts: controls[1:]
   become: true
   gather_facts: false
+  tags:
+    - join-controls
   tasks:
     - name: Join additional controls
       shell: >
@@ -628,6 +659,8 @@
   hosts: workers
   become: true
   gather_facts: false
+  tags:
+    - join-workers
   tasks:
     - name: Join workers
       shell: >
@@ -640,6 +673,8 @@
   hosts: controls
   become: true
   gather_facts: false
+  tags:
+    - finish-controls
   tasks:
     - name: Create ~/.kube for root
       file:
@@ -679,18 +714,3 @@
       until: not result.failed
       retries: 5
       delay: 1
-
-    - name: Download kubeconfig
-      fetch:
-        src: /etc/kubernetes/admin.conf
-        dest: '{{ playbook_dir }}/../cluster/admin.conf'
-        flat: true
-      run_once: true
-
-    - name: Set kubeconfig mode (to avoid warnings)
-      file:
-        path: '{{ playbook_dir }}/../cluster/admin.conf'
-        mode: '0600'
-      run_once: true
-      become: false
-      delegate_to: localhost
