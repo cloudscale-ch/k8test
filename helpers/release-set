@@ -62,8 +62,9 @@ session = Session()
 # to the closest release that fixes it.
 RELEASE_MAP = {
     'cilium': {
-        # The cilium pods crash-loop in 1.14.4
+        # The cilium pods crash-loop in 1.14.4 and 1.14.5
         '1.14.4': '1.14.3',
+        '1.14.5': '1.14.3',
     }
 }
 
