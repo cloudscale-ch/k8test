@@ -204,7 +204,7 @@
           {%    endfor %}
               workers:
                 hosts:
-          {%    for host in groups['workers'] %}
+          {%    for host in groups['workers'] | default([]) %}
                   {{ host }}:
           {%    endfor %}
 
