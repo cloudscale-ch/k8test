@@ -1,13 +1,12 @@
 #!/usr/bin/env ansible-playbook
 #
-# This playbook imports a container from the host and makes it available to
-# all nodes in the cluster. For this to work, it installs podman on each node.
+# This playbook imports an image from the host and makes it available to
+# all nodes in the cluster.
 #
-# Since podman shares its underlying storage with CRI-O, this allows us to
-# make a custom container available to Kubernetes, without having to push it
-# top any registry.
+# This allows us to make a custom image available to Kubernetes, without having
+# to push it to any registry.
 #
-# Such containers can be used in places where an `image` definition is used,
+# Such images can be used in places where an `image` definition is used,
 # given that the `imagePullPolicy` is set to `IfNotPresent`. Note that this
 # does not work with the `latest` label though, which is always pulled.
 #
@@ -18,10 +17,6 @@
   environment:
     KUBECONFIG: /etc/kubernetes/admin.conf
   tasks:
-    - name: Ensure podman is installed
-      package:
-        name: podman
-
     - name: Upload the image
       copy:
         src: "{{ image }}"
@@ -29,4 +24,4 @@
         force: true
 
     - name: Import the image
-      command: 'podman load -i "/tmp/{{ image | basename }}"'
+      command: 'nerdctl load --namespace k8s.io -i "/tmp/{{ image | basename }}"'

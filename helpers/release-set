@@ -202,22 +202,54 @@ def cri_tools(kubernetes: Version) -> Release:
     )
 
 
-def cri_o(kubernetes: Version) -> Release:
-    """ The cri-o release for the given Kubernetes release, which uses the
-    same minor version as Kubernetes (but not the same patch release).
-
-    That being said, installing an older CRI-O version is often tricky as
-    their install script is not versioned and tends to fail with older
-    versions.
-
-    Therefore we always use the latest release.
+def containerd(kubernetes: Version) -> Release:
+    """ Containerd releases independently of Kubernetes and it is generally
+    okay tu just use the latest release.
 
     """
 
-    versions = repository_versions("https://github.com/cri-o/cri-o")
+    versions = repository_versions("https://github.com/containerd/containerd")
 
     return Release(
-        name="cri-o",
+        name="containerd",
+        version=str(versions[-1]),
+    )
+
+
+def runc(kubernetes: Version) -> Release:
+    """ Runc releases independently of Kubernetes and it is generally
+    okay tu just use the latest release.
+
+    """
+
+    versions = repository_versions("https://github.com/opencontainers/runc")
+
+    return Release(
+        name="runc",
+        version=str(versions[-1]),
+    )
+
+
+def buildkit(kubernetes: Version) -> Release:
+    """ Buildkit is used by nerdctl. """
+
+    versions = repository_versions("https://github.com/moby/buildkit")
+
+    return Release(
+        name="buildkit",
+        version=str(versions[-1]),
+    )
+
+
+def nerdctl(kubernetes: Version) -> Release:
+    """ Nerdctl is a CLI tool to implement docker commands with containerd.
+
+    """
+
+    versions = repository_versions("https://github.com/containerd/nerdctl")
+
+    return Release(
+        name="nerdctl",
         version=str(versions[-1]),
     )
 
@@ -317,8 +349,17 @@ def main(
         if not limit or 'cri-tools' in limit:
             yield cri_tools(kubernetes_release)
 
-        if not limit or 'cri-o' in limit:
-            yield cri_o(kubernetes_release)
+        if not limit or 'containerd' in limit:
+            yield containerd(kubernetes_release)
+
+        if not limit or 'runc' in limit:
+            yield runc(kubernetes_release)
+
+        if not limit or 'buildkit' in limit:
+            yield buildkit(kubernetes_release)
+
+        if not limit or 'nerdctl' in limit:
+            yield nerdctl(kubernetes_release)
 
         if not limit or 'cilium' in limit:
             yield cilium(kubernetes_release)

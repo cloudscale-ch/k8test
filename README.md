@@ -116,8 +116,6 @@ playbooks/deploy-chart.yml \
 
 This playbook allows building a Dockerfile on the nodes in a way that makes the resulting image available on the cluster, without the need for an external registry.
 
-This is done by installing Podman, which uses the same underlying storage as CRI-O, and just building an image locally (no push needed).
-
 The resulting image can be used with `imagePullPolicy: IfNotPresent`, provided that the image tag is not `latest` (which always causes a pull).
 
 ```bash
@@ -134,4 +132,11 @@ Just like with the `extra` in `playbooks/deploy-chart.yml`, quotes are necessary
   -e dockerfile=./Dockerfile \
   -e tag=quay.io/cloudscalech/cloudscale-cloud-controller-manager:test \
   -e extra='"--build-arg=BAR=foo --build-arg=FOO=bar"'
+```
+
+It is also possible to import an image built locally that way. For this, the image has to first be exported:
+
+```bash
+docker save my-image -o image.tar
+/playbooks/image-image.yml -i cluster/inventory.yml -e image=image.tar
 ```
