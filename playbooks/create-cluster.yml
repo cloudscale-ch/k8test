@@ -506,6 +506,12 @@
       retries: 5
       delay: 1
 
+    # Fixes an issue with Cilium:
+    # https://github.com/cilium/cilium/issues/23838
+    - name: Ensure correct CNI permissions
+      command: chown -R root:root /opt/cni/bin
+      when: result.changed
+
     - name: Download and extract CRI-tools
       unarchive:
         src: >
