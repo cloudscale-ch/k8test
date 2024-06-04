@@ -259,6 +259,37 @@
       changed_when: false
       check_mode: false
 
+    # Google Cloud's IPv6 ingress path is fraught with problems¹ for some
+    # providers like ourselves. Since their NOC has so far been unable to
+    # fix the issue on their end, we prefer IPv4 when talking to Google Cloud,
+    # whenever possible.
+    #
+    # The change below takes the global IPv6 subnet used by Google Cloud² and
+    # lowers its precedence below the default for IPv4.
+    #
+    # Since gai.conf no longer uses default values, if any label or precedence
+    # line is added, we enable all defaults first.
+    #
+    # [1] https://github.com/kubernetes/registry.k8s.io/issues/261
+    # [2] https://www.gstatic.com/ipranges/cloud.json
+    #
+    - name: Make default gai.conf explicit, to be able to add to it
+      replace:
+        path: /etc/gai.conf
+        regexp: '^#(precedence(?!\s+::ffff:0:0/96\s+100)|label|scopev4)(.+)'
+        replace: '\1\2'
+
+    - name: Prefer IPv4 when talking to Google Cloud
+      blockinfile:
+        path: /etc/gai.conf
+        block: |
+
+          # Lower the precedence of Google Cloud's IPv6 range, since it's
+          # less reliable than IPv4.
+          precedence 2600:1901::/48 0
+
+        marker: "# {mark} Google specific config"
+
     - name: Update package cache
       shell: >
         command -v apt && apt-get update || true
