@@ -290,6 +290,20 @@
 
         marker: "# {mark} Google specific config"
 
+    # Unfortunately containerd does not care about /etc/gai.conf, but it does
+    # respect /etc/hosts, so we can override registry.k8s.io there.
+    - name: Get IPv4 for registry.k8s.io
+      shell: getent ahostsv4 registry.k8s.io | head -n 1 | cut -d ' ' -f 1
+      register: registry_address
+      changed_when: False
+      check_mode: False
+
+    - name: Force IPv4 for containerd
+      lineinfile:
+        path: /etc/hosts
+        regexp: '.+ registry.k8s.io^'
+        line: '{{ registry_address.stdout.strip() }} registry.k8s.io'
+
     - name: Update package cache
       shell: >
         command -v apt && apt-get update || true
