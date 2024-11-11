@@ -204,11 +204,15 @@ def cri_tools(kubernetes: Version) -> Release:
 
 def containerd(kubernetes: Version) -> Release:
     """ Containerd releases independently of Kubernetes and it is generally
-    okay tu just use the latest release.
+    okay to just use the latest release.
 
     """
 
     versions = repository_versions("https://github.com/containerd/containerd")
+
+    # Older Kubernetes releases are not compatible with the containerd 2.x
+    if kubernetes < Version(1, 31):
+        versions = [v for v in versions if v < Version(2, 0, 0)]
 
     return Release(
         name="containerd",
