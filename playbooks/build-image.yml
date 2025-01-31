@@ -32,6 +32,11 @@
           - "--exclude=k8test"
           - "--exclude=venv"
 
+    - name: Ensure buildkit is running
+      systemd:
+        name: buildkit.service
+        state: started
+
     - name: Build image
       command: >
         nerdctl build . --namespace k8s.io -t '{{ tag }}' {{ extra }}
