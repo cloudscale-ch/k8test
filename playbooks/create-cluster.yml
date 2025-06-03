@@ -60,7 +60,7 @@
     # -------------------------------------------------------------------------
     - name: Create private network
       cloudscale_ch.cloud.network:
-        name: '{{ cluster_prefix }}-private-network'
+        name: '{{ cluster_prefix }}-private-network-{{ zone }}'
         auto_create_ipv4_subnet: False
         zone: '{{ zone }}'
       register: private_network
