@@ -16,7 +16,7 @@
         name: '{{ item }}'
         state: absent
       changed_when: true
-      loop: "{{ groups['nodes'] }}"
+      loop: "{{ groups['nodes'] | default([]) }}"
 
     - name: Destroy private network
       cloudscale_ch.cloud.network:
