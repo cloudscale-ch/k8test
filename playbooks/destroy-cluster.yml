@@ -20,8 +20,11 @@
 
     - name: Destroy private network
       cloudscale_ch.cloud.network:
-        name: '{{ cluster_prefix }}-private-network'
+        name: '{{ item }}'
         state: absent
+      loop:
+        - '{{ cluster_prefix }}-private-network-rma1'
+        - '{{ cluster_prefix }}-private-network-lpg1'
 
     - name: Remove kubeconfig
       file:
