@@ -186,15 +186,28 @@ def cri_tools(kubernetes: Version) -> Release:
     """ The cri-tools for the given Kubernetes release, which uses the same
     minor version as Kubernetes (but not the same patch release).
 
+    If cri-tools for the specific Kubernetes version is not yet available,
+    falls back to the most recent released version.
+
     """
 
     repo = "https://github.com/kubernetes-sigs/cri-tools"
+    available_versions = repository_versions(repo)
+
+    # Try to match the Kubernetes minor version first
     version = match_release(
         f"{kubernetes.major}.{kubernetes.minor}",
-        repository_versions(repo)
-
+        available_versions
     )
-    assert version
+
+    # If no match found (cri-tools lag), use the latest available version
+    if version is None:
+        print(
+            f"Warning: cri-tools v{kubernetes.major}.{kubernetes.minor}.x"
+            f" not yet available, using latest: {available_versions[-1]}",
+            file=sys.stderr
+        )
+        version = available_versions[-1]
 
     return Release(
         name="cri-tools",
