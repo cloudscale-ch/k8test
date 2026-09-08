@@ -224,7 +224,7 @@
         name: '{{ ansible_host }}'
         state: absent
       loop: '{{ server.ssh_host_keys }}'
-      when: '"ssh-rsa" in item'
+      when: '"ssh-rsa" in item or "ssh-ed25519" in item or "ecdsa-sha2" in item'
       delegate_to: localhost
 
     - name: Trust new SSH host keys
@@ -232,7 +232,7 @@
         name: '{{ ansible_host }}'
         key: '{{ ansible_host }} {{ item }}'
       loop: '{{ server.ssh_host_keys }}'
-      when: '"ssh-rsa" in item'
+      when: '"ssh-rsa" in item or "ssh-ed25519" in item or "ecdsa-sha2" in item'
       delegate_to: localhost
 
 - name: VM Setup
