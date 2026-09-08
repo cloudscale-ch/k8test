@@ -24,4 +24,4 @@
         force: true
 
     - name: Import the image
-      command: 'nerdctl load --namespace k8s.io -i "/tmp/{{ image | basename }}"'
+      command: 'ctr -n k8s.io images import "/tmp/{{ image | basename }}"'
