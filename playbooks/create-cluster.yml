@@ -128,7 +128,7 @@
       loop_control:
         loop_var: index
       retries: 45
-      delay: 1
+      delay: 3
 
     - name: Wait for workers to launch
       cloudscale_ch.cloud.server:
@@ -139,7 +139,7 @@
       loop_control:
         loop_var: index
       retries: 45
-      delay: 1
+      delay: 3
 
     # This is not production-proof, it is good enough for testing only
     - name: Define the control plane endpoint address as the first control's IP
